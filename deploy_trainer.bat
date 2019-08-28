@@ -1,1 +1,0 @@
-az group deployment create -g cloud-vae-wu2 --template-file container_arm.json --parameters storageKey=ro1W1Rtienm7iWTS/Rv/vfbpZia3oxpyTNy8bogVXxJ94A122k3bg3mx14fOw6eKJQBptJz3f/xXguHPOeBLBg== registryPassword=FcFF8Z26Y2[fbJE=-PIF]KX=tF7@+d]s logAnalyticsKey=yDsddO9TIohuPQjk376MvVYl7HAJrIjzxKW6xQxt+ZOqjYEFK+gwVunkOQNB10a9y7j5Bkb5WCIpb4JkCTCjgw==
