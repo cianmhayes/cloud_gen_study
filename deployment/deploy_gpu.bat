@@ -1,0 +1,1 @@
+az group deployment create -g cloud-vae-wu2 --template-file gpu_container_arm_template.json --parameters @secrets.json --parameters @%1

@@ -1,0 +1,1 @@
+az acr build -r cianh -f gpu.dockerfile -t cloud-vae-gpu .

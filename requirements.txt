@@ -1,0 +1,14 @@
+applicationinsights
+Pillow
+pylint
+pytest
+numpy
+tensorboard_logger
+tensorboard-pytorch
+tensorflow
+future
+azure
+ffmpeg-python
+onnx
+rope
+lmdb

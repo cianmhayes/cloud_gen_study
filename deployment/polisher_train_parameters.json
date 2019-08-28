@@ -1,0 +1,24 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "containerGroupName": {
+            "value": "cloud-polisher-train-cg"
+        },
+        "trainCommand": {
+            "value": [
+                "python3",
+                "train_polisher.py",
+                "-e",
+                "1000",
+                "-o",
+                "/mnt/scratch/",
+                "-d",
+                "polisher-training-data-w648-h432-201907150432"
+            ]
+        },
+        "memory": {
+            "value": 8
+        }
+    }
+}

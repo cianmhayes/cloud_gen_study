@@ -1,0 +1,1 @@
+az acr build -r cianh -f vae_train.dockerfile -t cloud-vae-cpu .

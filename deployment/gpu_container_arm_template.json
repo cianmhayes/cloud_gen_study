@@ -1,0 +1,127 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "containerGroupName": {
+            "type": "string"
+        },
+        "trainCommand": {
+            "type": "array"
+        },
+        "image":{
+            "type": "string",
+            "defaultValue": "cianh.azurecr.io/cloud-vae-gpu:latest"
+        },
+        "cpu":{
+            "type": "int",
+            "defaultValue": 2
+        },
+        "memory":{
+            "type": "int",
+            "defaultValue": 14
+        },
+        "gpu":{
+            "type": "int",
+            "defaultValue": 1
+        },
+        "storageKey": {
+            "type": "securestring"
+        },
+        "registryPassword": {
+            "type": "securestring"
+        },
+        "logAnalyticsKey": {
+            "type": "securestring"
+        },
+        "cuda_launch_blocking": {
+            "type": "string",
+            "defaultValue": "0"
+        }
+    },
+    "resources": [
+        {
+            "name": "[parameters('containerGroupName')]",
+            "type": "Microsoft.ContainerInstance/containerGroups",
+            "apiVersion": "2018-10-01",
+            "location": "West US 2",
+            "properties": {
+                "containers":[
+                    {
+                        "name": "main",
+                        "properties":{
+                            "image": "[parameters('image')]",
+                            "command": "[parameters('trainCommand')]",
+                            "resources": {
+                                "requests":{
+                                    "cpu": "[parameters('cpu')]",
+                                    "memoryInGB": "[parameters('memory')]",
+                                    "gpu": {
+                                        "sku": "K80",
+                                        "count": "[parameters('gpu')]"
+                                    }
+                                }
+                            },
+                            "environmentVariables":[
+                                {
+                                    "name": "AZURE_STORAGE_ACCOUNT_KEY",
+                                    "secureValue": "[parameters('storageKey')]"
+                                },
+                                {
+                                    "name": "AZURE_STORAGE_ACCOUNT_NAME",
+                                    "value": "cloudvaestorage"
+                                },
+                                {
+                                    "name": "CUDA_LAUNCH_BLOCKING",
+                                    "value": "[parameters('cuda_launch_blocking')]"
+                                }
+                            ],
+                            "volumeMounts":[
+                                {
+                                    "name": "scratch",
+                                    "mountPath": "/mnt/scratch/"
+                                },
+                                {
+                                    "name": "datasets",
+                                    "mountPath": "/mnt/datasets/"
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "osType": "Linux",
+                "restartPolicy":"Never",
+                "diagnostics":{
+                    "logAnalytics":{
+                        "workspaceId":"3d441b7a-693b-45c8-a402-ecc825eb62ac",
+                        "workspaceKey":"[parameters('logAnalyticsKey')]"
+                    }
+                },
+                "volumes":[
+                    {
+                        "name": "scratch",
+                        "azureFile":{
+                            "storageAccountName": "cloudvaestorage",
+                            "storageAccountKey": "[parameters('storageKey')]",
+                            "shareName": "training-scratch"
+                        }
+                    },
+                    {
+                        "name": "datasets",
+                        "azureFile":{
+                            "storageAccountName": "cloudvaestorage",
+                            "storageAccountKey": "[parameters('storageKey')]",
+                            "shareName": "datasets"
+                        }
+                    }
+                ],
+                "imageRegistryCredentials":[
+                    {
+                        "server": "cianh.azurecr.io",
+                        "username": "a2b0f77a-664c-4542-bd89-8ff8d98b2d8a",
+                        "password": "[parameters('registryPassword')]"
+                    }
+                ]
+            }
+        }
+    ]
+}   

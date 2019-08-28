@@ -1,0 +1,36 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "containerGroupName": {
+            "value": "cloud-mono-vae-train-4gpu-cg"
+        },
+        "trainCommand": {
+            "value": [
+                "python3",
+                "train_vae.py",
+                "--epoch",
+                "1000",
+                "--output-path",
+                "/mnt/scratch/",
+                "--data-path",
+                "/mnt/datasets/cloud_normalized_original_w648_h432_20190804",
+                "--image-set",
+                "mono",
+                "--batch-size",
+                "64",
+                "--gradient-clip",
+                "5.0"
+            ]
+        },
+        "cpu": {
+            "value": 4
+        },
+        "gpu": {
+            "value": 4
+        },
+        "memory": {
+            "value": 128
+        }
+    }
+}

@@ -1,0 +1,30 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "containerGroupName": {
+            "value": "cloud-image-normalizer-cg"
+        },
+        "trainCommand": {
+            "value": [
+                "python3",
+                "utils/image_set.py",
+                "normalize",
+                "--width",
+                "648",
+                "--height",
+                "432",
+                "--output",
+                "//mnt/datasets/cloud_normalized_original_w648_h432_20190804",
+                "--db-size",
+                "100"
+            ]
+        },
+        "memory": {
+            "value": 8
+        },
+        "cpu": {
+            "value": 1
+        }
+    }
+}

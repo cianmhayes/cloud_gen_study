@@ -1,0 +1,12 @@
+.cache
+__pycache__
+.pytest_cache
+.vscode
+.venv
+venv
+tb_logs
+output
+data
+output
+deploy.bat
+temp
