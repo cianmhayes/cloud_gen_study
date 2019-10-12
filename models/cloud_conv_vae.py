@@ -9,11 +9,11 @@ class AEMode(Enum):
     Decodeonly = 3
 
 def load_model(path, mode=AEMode.EncodeAndDecode):
-    checkpoint = torch.load(path)
+    checkpoint = torch.load(path, map_location="cpu")
     width = checkpoint["image_width"]
     height = checkpoint["image_height"]
     hidden = checkpoint["image_hidden"]
-    latent = checkpoint["image_latent"]
+    latent = checkpoint["image_latent"][0] # TODO: fix tuple 
     channels = checkpoint["image_channels"]
     model = CloudConvVae(width, height, hidden, latent, channels, mode=mode)
     model.load_state_dict(checkpoint["model_state_dict"])

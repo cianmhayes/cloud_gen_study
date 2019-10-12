@@ -4,6 +4,32 @@ import uuid
 import math
 from PIL import Image
 
+def resize_preserve_aspect(im, target_width, target_height):
+    original_width = im.size[0]
+    original_height = im.size[1]
+    original_ratio = original_width / original_height
+    target_ratio = target_width / target_height
+    if target_ratio > original_ratio:
+        new_size = (target_width, math.ceil(target_width / original_ratio))
+    else:
+        new_size = (math.ceil(target_height * original_ratio), target_height)
+    # if the ratio is only slightly off, just snap to the target dimensions
+    if (new_size[0] > target_width and new_size[0] < target_width + 3) or (new_size[1] > target_height and new_size[1] < target_height + 3):
+        new_size = (target_width, target_height) 
+    return im.resize(new_size, Image.ANTIALIAS)
+
+def fix_aspect_ratio(im, target_width, target_height):
+    if im.size[0] == target_width and im.size[1] == target_height:
+        return im
+    elif im.size[0] > target_width:
+        offset = int(math.floor((im.size[0] - target_width) / 2))
+        return im.crop((offset, 0, im.size[0] - offset, target_height))
+    elif im.size[1] > target_height:
+        offset = int(math.floor((im.size[1] - target_height) / 2))
+        return im.crop((0, offset, target_width, im.size[1] - offset))
+    raise Exception("unreachable code")
+
+
 class ImageNormalizer(object):
     def __init__(self, target_width, target_height):
         self.target_height = target_height
@@ -42,17 +68,7 @@ class ImageNormalizer(object):
         return output
 
     def _resize(self, im):
-        original_width = im.size[0]
-        original_height = im.size[1]
-        original_ratio = original_width / original_height
-        target_ratio = self.target_width / self.target_height
-        if target_ratio > original_ratio:
-            new_size = (self.target_width, math.ceil(self.target_width / original_ratio))
-        else:
-            new_size = (math.ceil(self.target_height * original_ratio), self.target_height)
-        if (new_size[0] > self.target_width and new_size[0] < self.target_width + 3) or (new_size[1] > self.target_height and new_size[1] < self.target_height + 3):
-            new_size = (self.target_width, self.target_height) 
-        return im.resize(new_size, Image.ANTIALIAS)
+        return resize_preserve_aspect(im, self.target_width, self.target_height) 
     
     def _desaturate(self, im):
         matrix = (
@@ -73,15 +89,7 @@ class ImageNormalizer(object):
         return im
 
     def _fix_aspect_ratio(self, im):
-        if im.size[0] == self.target_width and im.size[1] == self.target_height:
-            return im
-        elif im.size[0] > self.target_width:
-            offset = int(math.floor((im.size[0] - self.target_width) / 2))
-            return im.crop((offset, 0, im.size[0] - offset, self.target_height))
-        elif im.size[1] > self.target_height:
-            offset = int(math.floor((im.size[1] - self.target_height) / 2))
-            return im.crop((0, offset, self.target_width, im.size[1] - offset))
-        raise Exception("unreachable code")
+        return fix_aspect_ratio(im, self.target_width, self.target_height)
 
     def _extract_patches(self, large_im, scale_factor=None):
         im = large_im
