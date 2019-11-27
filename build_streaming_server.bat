@@ -1,1 +1,0 @@
-az acr build -r cianh -f streaming_server.dockerfile -t cloud-vae-streaming-server .
