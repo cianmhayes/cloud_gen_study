@@ -8,7 +8,7 @@ from torch.multiprocessing import Pool
 import ffmpeg
 from PIL import Image
 import subprocess
-
+import os
 
 OUTPUT_IMAGE_WIDTH = 1920
 OUTPUT_IMAGE_HEIGHT = 1080
@@ -26,8 +26,9 @@ def process_frame_tensor(image_tensor):
 class Streamer(object):
     def __init__(self):
         self.cpu_count = max([1, os.cpu_count()])
-        self.model_path = "C:\\code\\cloud_gen_study\\.cache\\cloudvaestorage_training-scratch_train-cloud-vae-colour-20190828-042617_model-checkpoint-250.pt"
-        self.dimension_file_path = "C:\\code\\cloud_gen_study\\colour_latent_dimensions.json"
+        script_folder = os.path.dirname(__file__) 
+        self.model_path = os.path.join(script_folder, "model-checkpoint-250.pt")
+        self.dimension_file_path = os.path.join(script_folder, "colour_latent_dimensions.json")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.last_key_frame = torch.randn(64, requires_grad=False, device=self.device)
         mean, std = self._get_latent_dimensions()
