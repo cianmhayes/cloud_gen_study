@@ -49,21 +49,26 @@ class Streamer(object):
             std = [d["std"] for d in dimensions]
             return means, std
 
-    def generate_batch(self, q: Queue) -> None:
+    def generate_batch(self, tensor_queue: Queue) -> None:
         interpolated_frames, next_key_frame = self.generator(self.last_key_frame, delta_magnitude=BATCH_DISTANCE    , n_interpolation=INTERPOLATION_FRAME_COUNT)
         image_tensor = self.image_model.decode(interpolated_frames)            
         image_tensor = image_tensor.cpu()
-        for i in range(len(image_tensor)):
-            frame_bytes = process_frame_tensor(image_tensor[i])
-            q.put(frame_bytes)
+        tensor_queue.put(image_tensor)
         self.last_key_frame = next_key_frame
 
-def generation_process(q: Queue) -> None:
+def generation_process(tensor_queue: Queue) -> None:
     with torch.no_grad():
         streamer = Streamer()
         while True:
-            if q.qsize() < MAX_BUFFER:
-                streamer.generate_batch(q)
+            if tensor_queue.qsize() < MAX_BUFFER:
+                streamer.generate_batch(tensor_queue)
+
+def render_process(tensor_queue:Queue, frame_queue:Queue) -> None:
+    while True:
+        image_tensor = tensor_queue.get()
+        for i in range(len(image_tensor)):
+            frame_bytes = process_frame_tensor(image_tensor[i])
+            frame_queue.put(frame_bytes)
 
 def stream(q: Queue, run_mplayer = False) -> None:
     stream_proc = (
@@ -76,7 +81,7 @@ def stream(q: Queue, run_mplayer = False) -> None:
     player_proc = None
     if run_mplayer :
         script_folder = os.path.dirname(__file__)
-        player_proc = subprocess.run(["mplayer", "-fs", "stream.sdp"], cwd=script_folder)
+        player_proc = subprocess.Popen(["mplayer", "-fs", "stream.sdp"], cwd=script_folder)
     interval = 1.0 / FPS
     next_frame_time = 0
     while True:
@@ -88,8 +93,12 @@ def stream(q: Queue, run_mplayer = False) -> None:
 
 
 if __name__ == "__main__":
+    tensor_queue = Queue()
     frame_queue = Queue()
-    p_gen = Process(target=generation_process, args=(frame_queue,))
+    p_gen = Process(target=generation_process, args=(tensor_queue,))
+    p_render = Process(target=render_process, args=(tensor_queue,frame_queue))
     p_gen.start()
+    p_render.start()
     stream(frame_queue)
     p_gen.join()
+    p_render.join()
