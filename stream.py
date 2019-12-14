@@ -86,8 +86,23 @@ def stream(q: Queue, run_mplayer = False) -> None:
         player_proc = subprocess.Popen(["mplayer", "-fs", "stream.sdp"], cwd=script_folder)
     interval = 1.0 / FPS
     next_frame_time = 0
+    vamp_frames = deque()
     while True:
+        if q.empty() and vamp_frames.count > 0:
+            vamp_buffer = []
+            for i in range(len(vamp_frames)):
+                vamp_buffer.append(vamp_frames[i])
+            for i in range(1, len(vamp_frames)):
+                vamp_buffer.append(vamp_frames[vamp_buffer.count - i])
+            for i in range(len(vamp_buffer)):
+                while time.clock() <= next_frame_time:
+                    pass
+                stream_proc.stdin.write(vamp_buffer[i])
+                next_frame_time = time.clock() + interval
         frame = q.get()
+        vamp_frames.appendleft(frame)
+        if vamp_frames.count >= MAX_VAMP_BUFFER:
+            vamp_frames.pop()
         while time.clock() <= next_frame_time:
             pass
         stream_proc.stdin.write(frame)
