@@ -9,14 +9,17 @@ import ffmpeg
 from PIL import Image
 import subprocess
 import os
+from multiprocessing import Process, Queue
+import time
+import subprocess
 
 OUTPUT_IMAGE_WIDTH = 1920
 OUTPUT_IMAGE_HEIGHT = 1080
 INTERPOLATION_FRAME_COUNT = 23
 BATCH_DISTANCE = 5
+FPS = INTERPOLATION_FRAME_COUNT + 1
 
-def ecb(ex):
-    print(ex)
+MAX_BUFFER = 2 * 60 * FPS
 
 def process_frame_tensor(image_tensor):
     pil_image = F.to_pil_image(image_tensor)
@@ -38,7 +41,6 @@ class Streamer(object):
         self.image_model = load_model(self.model_path)
         self.image_model = self.image_model.to(self.device)
         self.image_model.eval()
-        self._configure_streaming_process()
 
     def _get_latent_dimensions(self):
         with open(self.dimension_file_path, "r") as  dim_file:
@@ -47,36 +49,47 @@ class Streamer(object):
             std = [d["std"] for d in dimensions]
             return means, std
 
-    def generate_batch(self):
-        mp_result = None
-        with Pool(processes=self.cpu_count) as image_conversion_pool:
-            while True:
-                interpolated_frames, next_key_frame = self.generator(self.last_key_frame, delta_magnitude=BATCH_DISTANCE    , n_interpolation=INTERPOLATION_FRAME_COUNT)
-                image_tensor = self.image_model.decode(interpolated_frames)            
-                if mp_result:
-                    mp_result.wait()
-                image_tensor = image_tensor.cpu()
-                mp_result = image_conversion_pool.map_async(process_frame_tensor, [image_tensor[i] for i in range(len(image_tensor))], callback=self._stream_frame, error_callback=ecb)
-                self.last_key_frame = next_key_frame
-            image_conversion_pool.terminate()
-            image_conversion_pool.join()
+    def generate_batch(self, q: Queue) -> None:
+        interpolated_frames, next_key_frame = self.generator(self.last_key_frame, delta_magnitude=BATCH_DISTANCE    , n_interpolation=INTERPOLATION_FRAME_COUNT)
+        image_tensor = self.image_model.decode(interpolated_frames)            
+        image_tensor = image_tensor.cpu()
+        for i in range(len(image_tensor)):
+            frame_bytes = process_frame_tensor(image_tensor[i])
+            q.put(frame_bytes)
+        self.last_key_frame = next_key_frame
 
-    def _configure_streaming_process(self):
-        fps = INTERPOLATION_FRAME_COUNT + 1
-        self.stream_proc = (
-            ffmpeg
+def generation_process(q: Queue) -> None:
+    with torch.no_grad():
+        streamer = Streamer()
+        while True:
+            if q.qsize() < MAX_BUFFER:
+                streamer.generate_batch(q)
+
+def stream(q: Queue, run_mplayer = False) -> None:
+    stream_proc = (
+        ffmpeg
             .input('pipe:', format='rawvideo', pix_fmt='rgb24', s='{}x{}'.format(OUTPUT_IMAGE_WIDTH, OUTPUT_IMAGE_HEIGHT))
-            .output("rtp://127.0.0.1:1234", format="rtp", pix_fmt='rgb24', r=fps, g=fps, q=0)
+            .output("rtp://127.0.0.1:1234", format="rtp", pix_fmt='rgb24', r=FPS, g=FPS, q=0)
             .overwrite_output()
             .run_async(pipe_stdin=True)
-        )
+    )
+    player_proc = None
+    if run_mplayer :
+        script_folder = os.path.dirname(__file__)
+        player_proc = subprocess.run(["mplayer", "stream.sdp"], cwd=script_folder)
+    interval = 1.0 / FPS
+    next_frame_time = 0
+    while True:
+        frame = q.get()
+        while time.clock() <= next_frame_time:
+            pass
+        stream_proc.stdin.write(frame)
+        next_frame_time = time.clock() + interval
 
-    def _stream_frame(self, frames):
-        for frame in frames:
-            self.stream_proc.stdin.write(frame)
 
 if __name__ == "__main__":
-    with torch.no_grad():
-        set_start_method("spawn")
-        streamer = Streamer()
-        streamer.generate_batch()
+    frame_queue = Queue()
+    p_gen = Process(target=generation_process, args=(frame_queue,))
+    p_gen.start()
+    stream(frame_queue)
+    p_gen.join()
