@@ -76,7 +76,7 @@ def stream(q: Queue, run_mplayer = False) -> None:
     player_proc = None
     if run_mplayer :
         script_folder = os.path.dirname(__file__)
-        player_proc = subprocess.run(["mplayer", "stream.sdp"], cwd=script_folder)
+        player_proc = subprocess.run(["mplayer", "-fs", "stream.sdp"], cwd=script_folder)
     interval = 1.0 / FPS
     next_frame_time = 0
     while True:
