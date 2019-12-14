@@ -90,9 +90,9 @@ def stream(q: Queue, run_mplayer = False) -> None:
     while True:
         if q.empty() and vamp_frames.count > 0:
             vamp_buffer = []
-            for i in range(vamp_frames.count):
+            for i in range(len(vamp_frames)):
                 vamp_buffer.append(vamp_frames[i])
-            for i in range(1, vamp_frames.count):
+            for i in range(1, len(vamp_frames)):
                 vamp_buffer.append(vamp_frames[vamp_buffer.count - i])
             for i in range(len(vamp_buffer)):
                 while time.clock() <= next_frame_time:
