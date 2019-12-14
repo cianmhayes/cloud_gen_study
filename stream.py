@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from models.seed_generator import SeedGenerator
 from models.cloud_conv_vae import CloudConvVae, load_model
-from torch.multiprocessing import Pool
+from torch.multiprocessing import Pool, set_start_method
 import ffmpeg
 from PIL import Image
 import subprocess
@@ -12,7 +12,7 @@ import os
 
 OUTPUT_IMAGE_WIDTH = 1920
 OUTPUT_IMAGE_HEIGHT = 1080
-INTERPOLATION_FRAME_COUNT = 11
+INTERPOLATION_FRAME_COUNT = 23
 BATCH_DISTANCE = 5
 
 def ecb(ex):
@@ -32,7 +32,7 @@ class Streamer(object):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.last_key_frame = torch.randn(64, requires_grad=False, device=self.device)
         mean, std = self._get_latent_dimensions()
-        self.generator = SeedGenerator(mean, std)
+        self.generator = SeedGenerator(mean, std, self.device)
         self.generator.to(self.device)
         self.generator.eval()
         self.image_model = load_model(self.model_path)
@@ -55,16 +55,18 @@ class Streamer(object):
                 image_tensor = self.image_model.decode(interpolated_frames)            
                 if mp_result:
                     mp_result.wait()
+                image_tensor = image_tensor.cpu()
                 mp_result = image_conversion_pool.map_async(process_frame_tensor, [image_tensor[i] for i in range(len(image_tensor))], callback=self._stream_frame, error_callback=ecb)
                 self.last_key_frame = next_key_frame
             image_conversion_pool.terminate()
             image_conversion_pool.join()
 
     def _configure_streaming_process(self):
+        fps = INTERPOLATION_FRAME_COUNT + 1
         self.stream_proc = (
             ffmpeg
             .input('pipe:', format='rawvideo', pix_fmt='rgb24', s='{}x{}'.format(OUTPUT_IMAGE_WIDTH, OUTPUT_IMAGE_HEIGHT))
-            .output("rtp://127.0.0.1:1234", format="rtp", pix_fmt='rgb24', g=(INTERPOLATION_FRAME_COUNT + 1), q=0)
+            .output("rtp://127.0.0.1:1234", format="rtp", pix_fmt='rgb24', r=fps, g=fps, q=0)
             .overwrite_output()
             .run_async(pipe_stdin=True)
         )
@@ -75,5 +77,6 @@ class Streamer(object):
 
 if __name__ == "__main__":
     with torch.no_grad():
+        set_start_method("spawn")
         streamer = Streamer()
         streamer.generate_batch()

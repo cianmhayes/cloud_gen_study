@@ -9,10 +9,10 @@ Z_99 = 2.576
 Z_999 = 3.29
 
 class SeedGenerator(nn.Module):
-    def __init__(self, mean, std):
+    def __init__(self, mean, std, device):
         super().__init__()
-        self.dim_mean = torch.as_tensor(mean)
-        self.dim_std = torch.as_tensor(std)
+        self.dim_mean = torch.as_tensor(mean).to(device)
+        self.dim_std = torch.as_tensor(std).to(device)
 
     def forward(self, last_tensor, delta_magnitude=10, n_key_frames=1, n_interpolation=23):
         # generate directional tensor
