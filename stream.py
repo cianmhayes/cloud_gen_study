@@ -12,7 +12,6 @@ import os
 from multiprocessing import Process, Queue
 import time
 import subprocess
-from collections import deque
 
 OUTPUT_IMAGE_WIDTH = 1920
 OUTPUT_IMAGE_HEIGHT = 1080
@@ -21,7 +20,6 @@ BATCH_DISTANCE = 5
 FPS = INTERPOLATION_FRAME_COUNT + 1
 
 MAX_BUFFER = 2 * 60 * FPS
-MAX_VAMP_BUFFER = 2 * FPS
 
 def process_frame_tensor(image_tensor):
     pil_image = F.to_pil_image(image_tensor)
@@ -51,31 +49,26 @@ class Streamer(object):
             std = [d["std"] for d in dimensions]
             return means, std
 
-    def generate_batch(self, tensor_queue: Queue) -> None:
+    def generate_batch(self, q: Queue) -> None:
         interpolated_frames, next_key_frame = self.generator(self.last_key_frame, delta_magnitude=BATCH_DISTANCE    , n_interpolation=INTERPOLATION_FRAME_COUNT)
         image_tensor = self.image_model.decode(interpolated_frames)            
         image_tensor = image_tensor.cpu()
-        tensor_queue.put(image_tensor)
+        for i in range(len(image_tensor)):
+            frame_bytes = process_frame_tensor(image_tensor[i])
+            q.put(frame_bytes)
         self.last_key_frame = next_key_frame
 
-def generation_process(tensor_queue: Queue) -> None:
+def generation_process(q: Queue) -> None:
     with torch.no_grad():
         streamer = Streamer()
         while True:
-            if tensor_queue.qsize() < MAX_BUFFER:
-                streamer.generate_batch(tensor_queue)
-
-def render_process(tensor_queue:Queue, frame_queue:Queue) -> None:
-    while True:
-        image_tensor = tensor_queue.get()
-        for i in range(len(image_tensor)):
-            frame_bytes = process_frame_tensor(image_tensor[i])
-            frame_queue.put(frame_bytes)
+            if q.qsize() < MAX_BUFFER:
+                streamer.generate_batch(q)
 
 def stream(q: Queue, run_mplayer = False) -> None:
     stream_proc = (
         ffmpeg
-            .input('pipe:', format='rawvideo', pix_fmt='rgb24', s='{}x{}'.format(OUTPUT_IMAGE_WIDTH, OUTPUT_IMAGE_HEIGHT))
+            .input('pipe:', re=None, format='rawvideo', pix_fmt='rgb24', s='{}x{}'.format(OUTPUT_IMAGE_WIDTH, OUTPUT_IMAGE_HEIGHT))
             .output("rtp://127.0.0.1:1234", format="rtp", pix_fmt='rgb24', r=FPS, g=FPS, q=0)
             .overwrite_output()
             .run_async(pipe_stdin=True)
@@ -83,26 +76,11 @@ def stream(q: Queue, run_mplayer = False) -> None:
     player_proc = None
     if run_mplayer :
         script_folder = os.path.dirname(__file__)
-        player_proc = subprocess.Popen(["mplayer", "-fs", "stream.sdp"], cwd=script_folder)
+        player_proc = subprocess.run(["mplayer", "stream.sdp"], cwd=script_folder)
     interval = 1.0 / FPS
     next_frame_time = 0
-    vamp_frames = deque()
     while True:
-        if q.empty() and vamp_frames.count > 0:
-            vamp_buffer = []
-            for i in range(len(vamp_frames)):
-                vamp_buffer.append(vamp_frames[i])
-            for i in range(1, len(vamp_frames)):
-                vamp_buffer.append(vamp_frames[vamp_buffer.count - i])
-            for i in range(len(vamp_buffer)):
-                while time.clock() <= next_frame_time:
-                    pass
-                stream_proc.stdin.write(vamp_buffer[i])
-                next_frame_time = time.clock() + interval
         frame = q.get()
-        vamp_frames.appendleft(frame)
-        if vamp_frames.count >= MAX_VAMP_BUFFER:
-            vamp_frames.pop()
         while time.clock() <= next_frame_time:
             pass
         stream_proc.stdin.write(frame)
@@ -110,12 +88,8 @@ def stream(q: Queue, run_mplayer = False) -> None:
 
 
 if __name__ == "__main__":
-    tensor_queue = Queue()
     frame_queue = Queue()
-    p_gen = Process(target=generation_process, args=(tensor_queue,))
-    p_render = Process(target=render_process, args=(tensor_queue,frame_queue))
+    p_gen = Process(target=generation_process, args=(frame_queue,))
     p_gen.start()
-    p_render.start()
     stream(frame_queue)
     p_gen.join()
-    p_render.join()
