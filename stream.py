@@ -81,7 +81,7 @@ class Streamer(object):
             self.stream_proc = (
                 ffmpeg
                 .input('pipe:', re=None, format='rawvideo', pix_fmt='rgb24', framerate=FPS, s='{}x{}'.format(OUTPUT_IMAGE_WIDTH, OUTPUT_IMAGE_HEIGHT))
-                .output("rtp://127.0.0.1:1234", format="rtp", codec="mpeg4", pix_fmt='yuv420p', r=FPS, g=FPS, q=0)
+                .output("rtp://127.0.0.1:1234", format="rtp", codec="mpeg4", pix_fmt='yuv420p', r=FPS, g=FPS, q=0, b=5000000)
                 .overwrite_output()
                 .run_async(pipe_stdin=True)
             )
