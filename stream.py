@@ -13,7 +13,8 @@ import os
 OUTPUT_IMAGE_WIDTH = 1920
 OUTPUT_IMAGE_HEIGHT = 1080
 INTERPOLATION_FRAME_COUNT = 23
-BATCH_DISTANCE = 5
+BATCH_DISTANCE = 10
+FPS = INTERPOLATION_FRAME_COUNT + 1
 
 def ecb(ex):
     print(ex)
@@ -24,8 +25,12 @@ def process_frame_tensor(image_tensor):
     return pil_image.tobytes()
 
 class Streamer(object):
-    def __init__(self):
-        self.cpu_count = max([1, os.cpu_count()])
+    def __init__(self, to_file=False, target_frame_count=None, max_processes=1):
+        self.to_file = to_file
+        self.target_frame_count = target_frame_count
+        self.gnerated_frame_count = 0
+        self.should_run = True
+        self.cpu_count = min(max_processes, max([1, os.cpu_count()]))
         script_folder = os.path.dirname(__file__) 
         self.model_path = os.path.join(script_folder, "model-checkpoint-250.pt")
         self.dimension_file_path = os.path.join(script_folder, "colour_latent_dimensions.json")
@@ -50,26 +55,36 @@ class Streamer(object):
     def generate_batch(self):
         mp_result = None
         with Pool(processes=self.cpu_count) as image_conversion_pool:
-            while True:
-                interpolated_frames, next_key_frame = self.generator(self.last_key_frame, delta_magnitude=BATCH_DISTANCE    , n_interpolation=INTERPOLATION_FRAME_COUNT)
+            while self.should_run:
+                interpolated_frames, next_key_frame = self.generator(self.last_key_frame, delta_magnitude=BATCH_DISTANCE, n_interpolation=INTERPOLATION_FRAME_COUNT)
                 image_tensor = self.image_model.decode(interpolated_frames)            
                 if mp_result:
                     mp_result.wait()
                 image_tensor = image_tensor.cpu()
                 mp_result = image_conversion_pool.map_async(process_frame_tensor, [image_tensor[i] for i in range(len(image_tensor))], callback=self._stream_frame, error_callback=ecb)
                 self.last_key_frame = next_key_frame
+                self.gnerated_frame_count += FPS
+                if self.target_frame_count is not None and self.gnerated_frame_count >= self.target_frame_count:
+                    self.should_run = False
             image_conversion_pool.terminate()
             image_conversion_pool.join()
 
     def _configure_streaming_process(self):
-        fps = INTERPOLATION_FRAME_COUNT + 1
-        self.stream_proc = (
-            ffmpeg
-            .input('pipe:', re=None, format='rawvideo', pix_fmt='rgb24', s='{}x{}'.format(OUTPUT_IMAGE_WIDTH, OUTPUT_IMAGE_HEIGHT))
-            .output("rtp://127.0.0.1:1234", format="rtp", pix_fmt='rgb24', r=fps, g=fps, q=0)
-            .overwrite_output()
-            .run_async(pipe_stdin=True)
-        )
+        if self.to_file:
+            self.stream_proc = (
+                ffmpeg
+                .input('pipe:', re=None, format='rawvideo', framerate=FPS, pix_fmt='rgb24', s='{}x{}'.format(OUTPUT_IMAGE_WIDTH, OUTPUT_IMAGE_HEIGHT))
+                .output("video.mp4", codec="mpeg4", pix_fmt="yuv420p", q=0)
+                .run_async(pipe_stdin=True)
+            )
+        else:
+            self.stream_proc = (
+                ffmpeg
+                .input('pipe:', re=None, format='rawvideo', pix_fmt='rgb24', framerate=FPS, s='{}x{}'.format(OUTPUT_IMAGE_WIDTH, OUTPUT_IMAGE_HEIGHT))
+                .output("rtp://127.0.0.1:1234", format="rtp", codec="mpeg4", pix_fmt='yuv420p', r=FPS, g=FPS, q=0)
+                .overwrite_output()
+                .run_async(pipe_stdin=True)
+            )
 
     def _stream_frame(self, frames):
         for frame in frames:
