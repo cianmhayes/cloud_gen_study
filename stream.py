@@ -77,7 +77,7 @@ def generation_process(start_player=False):
         image_model = image_model.to(device)
         image_model.eval()
         
-        tensor_queue = Queue()
+        tensor_queue = Queue(maxsize=10)
         p_streaming = Process(target=streaming_process, args=(tensor_queue,))
         p_streaming.start()
 
@@ -85,16 +85,20 @@ def generation_process(start_player=False):
         player_timer = None
         if start_player:
             p_mplayer = Popen(["mplayer", "stream.sdp", "-benchmark", "-fs"], cwd=script_folder)
-            player_timer = Timer(15.0, start_player, args=(p_mplayer,))
+            player_timer = Timer(1.0, start_player, args=(p_mplayer,))
             player_timer.start()
 
         while True:
             interpolated_frames, next_key_frame = generator(last_key_frame, delta_magnitude=BATCH_DISTANCE, n_interpolation=INTERPOLATION_FRAME_COUNT)
             image_tensor = image_model.decode(interpolated_frames)
             image_tensor_cpu = image_tensor.cpu()
+            while tensor_queue.full():
+                pass
             tensor_queue.put(image_tensor_cpu)
-            del image_tensor
             del interpolated_frames
+            del image_tensor
+            del last_key_frame
+            torch.cuda.empty_cache()
             last_key_frame = next_key_frame
         p_streaming.terminate()
         p_streaming.join()
